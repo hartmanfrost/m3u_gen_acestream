@@ -197,9 +197,13 @@ func filter(log *logger.Logger,
 	searchResults = filterByAvailability(log, searchResults, playlist)
 	searchResults = filterByAvailabilityUpdateTime(log, searchResults, playlist)
 	searchResults = filterByCategories(log, searchResults, playlist)
-	searchResults = filterByLanguages(log, searchResults, playlist)
 	searchResults = filterByCountries(log, searchResults, playlist)
-	searchResults = filterByName(log, searchResults, playlist)
+	if playlist.NameRxOrLanguagesFilter != nil && *playlist.NameRxOrLanguagesFilter {
+		searchResults = filterByNameOrLanguages(log, searchResults, playlist)
+	} else {
+		searchResults = filterByLanguages(log, searchResults, playlist)
+		searchResults = filterByName(log, searchResults, playlist)
+	}
 	return searchResults
 }
 
@@ -374,6 +378,67 @@ func filterByCountries(log *logger.Logger,
 	}
 	currSources := acestream.GetSourcesAmount(searchResults)
 	log.InfoFi("Rejected", "sources", prevSources-currSources, "by", "countries", "playlist", playlist.OutputPath)
+	return searchResults
+}
+
+// filterByNameOrLanguages returns filtered `searchResults` keeping items whose name matches any
+// regular expression in nameRxFilter OR whose language is contained in languagesFilter. This is a
+// logical OR of the two filters, unlike the default pipeline which applies them as sequential AND.
+// Useful when channel language metadata is sparse: a channel passes via its name even if its
+// `languages` field is unset, and via its language even if its name carries no marker.
+// nameRxBlacklist and languagesBlacklist are still applied afterwards as removals.
+func filterByNameOrLanguages(log *logger.Logger,
+	searchResults []acestream.SearchResult,
+	playlist config.Playlist) []acestream.SearchResult {
+	prevSources := acestream.GetSourcesAmount(searchResults)
+	if len(playlist.NameRxFilter) > 0 || len(playlist.LanguagesFilter) > 0 {
+		searchResults = filterAcestreamItems(searchResults, func(item acestream.Item, _ int) bool {
+			nameKeep := lo.SomeBy(playlist.NameRxFilter, func(rxStr string) bool {
+				rx := regexp2.MustCompile(rxStr, regexp2.RE2)
+				keep, _ := rx.MatchString(item.Name)
+				return keep
+			})
+			langs := item.Languages
+			if len(langs) == 0 {
+				langs = []string{""}
+			}
+			var langKeep bool
+			if len(playlist.LanguagesFilter) > 0 {
+				if playlist.LanguagesFilterStrict {
+					langKeep = lo.Every(playlist.LanguagesFilter, langs)
+				} else {
+					langKeep = lo.Some(langs, playlist.LanguagesFilter)
+				}
+			}
+			keep := nameKeep || langKeep
+			if !keep {
+				log.DebugFi("Rejected", "name", item.Name, "languages", item.Languages,
+					"playlist", playlist.OutputPath)
+			}
+			return keep
+		})
+	}
+	if len(playlist.NameRxBlacklist) > 0 {
+		searchResults = rejectAcestreamItems(searchResults, func(item acestream.Item, _ int) bool {
+			return lo.SomeBy(playlist.NameRxBlacklist, func(rxStr string) bool {
+				rx := regexp2.MustCompile(rxStr, regexp2.RE2)
+				reject, _ := rx.MatchString(item.Name)
+				return reject
+			})
+		})
+	}
+	if len(playlist.LanguagesBlacklist) > 0 {
+		searchResults = rejectAcestreamItems(searchResults, func(item acestream.Item, _ int) bool {
+			langs := item.Languages
+			if len(langs) == 0 {
+				langs = []string{""}
+			}
+			return lo.Some(langs, playlist.LanguagesBlacklist)
+		})
+	}
+	currSources := acestream.GetSourcesAmount(searchResults)
+	log.InfoFi("Rejected", "sources", prevSources-currSources, "by", "name-or-languages",
+		"playlist", playlist.OutputPath)
 	return searchResults
 }
 

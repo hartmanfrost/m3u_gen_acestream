@@ -88,7 +88,7 @@ func (u Updater) doUpdate(url string) error {
 
 // getLatestRelease returns latest release info.
 func (u Updater) getLatestRelease() (Release, error) {
-	resp, err := u.httpClient.Get("https://api.github.com/repos/SCP002/m3u_gen_acestream/releases/latest")
+	resp, err := u.httpClient.Get("https://api.github.com/repos/hartmanfrost/m3u_gen_acestream/releases/latest")
 	if err != nil {
 		return Release{}, errors.Wrap(err, "Send get request")
 	}

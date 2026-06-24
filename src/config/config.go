@@ -29,6 +29,7 @@ type Playlist struct {
 	CategoryRxToCategoryMap      map[string]string   `yaml:"categoryRxToCategoryMap"`
 	NameRxToCategoriesMap        map[string][]string `yaml:"nameRxToCategoriesMap"`
 	NameRxFilter                 []string            `yaml:"nameRxFilter"`
+	NameRxOrLanguagesFilter      *bool               `yaml:"nameRxOrLanguagesFilter"`
 	NameRxBlacklist              []string            `yaml:"nameRxBlacklist"`
 	CategoriesFilter             []string            `yaml:"categoriesFilter"`
 	CategoriesFilterStrict       bool                `yaml:"categoriesFilterStrict"`
@@ -113,6 +114,14 @@ func Init(log *logger.Logger, filePath string) (*Config, bool, error) {
 	addNewOptions := func() error {
 		modified := false
 		for idx, playlist := range cfg.Playlists {
+			if playlist.NameRxOrLanguagesFilter == nil {
+				defVal := lo.ToPtr(false)
+				path := fmt.Sprintf("$.playlists[%v].nameRxOrLanguagesFilter", idx)
+				log.InfoFi("Adding new config option", "path", path, "value", defVal, "playlist", playlist.OutputPath)
+				cfg.Playlists[idx].NameRxOrLanguagesFilter = defVal
+				commentMap[path] = defCommentMap[path]
+				modified = true
+			}
 			if playlist.RemoveDeadSources == nil {
 				defVal := lo.ToPtr(false)
 				path := fmt.Sprintf("$.playlists[%v].removeDeadSources", idx)
@@ -206,6 +215,7 @@ func newDefCfg() (*Config, yaml.CommentMap) {
 				CategoryRxToCategoryMap:      map[string]string{regexpNonDefault: "other"},
 				NameRxToCategoriesMap:        map[string][]string{},
 				NameRxFilter:                 []string{},
+				NameRxOrLanguagesFilter:      lo.ToPtr(false),
 				NameRxBlacklist:              []string{},
 				CategoriesFilter:             []string{},
 				CategoriesFilterStrict:       false,
@@ -232,6 +242,7 @@ func newDefCfg() (*Config, yaml.CommentMap) {
 				CategoryRxToCategoryMap:      map[string]string{`(?i)^tv$`: "television", `^$`: "unknown"},
 				NameRxToCategoriesMap:        map[string][]string{},
 				NameRxFilter:                 []string{},
+				NameRxOrLanguagesFilter:      lo.ToPtr(false),
 				NameRxBlacklist:              []string{},
 				CategoriesFilter:             []string{"tv", "music", "unknown"},
 				CategoriesFilterStrict:       false,
@@ -258,6 +269,7 @@ func newDefCfg() (*Config, yaml.CommentMap) {
 				CategoryRxToCategoryMap:      map[string]string{},
 				NameRxToCategoriesMap:        map[string][]string{},
 				NameRxFilter:                 []string{},
+				NameRxOrLanguagesFilter:      lo.ToPtr(false),
 				NameRxBlacklist:              []string{`(?i).*erotic.*`, `(?i).*porn.*`, `(?i).*18\+.*`},
 				CategoriesFilter:             []string{},
 				CategoriesFilterStrict:       false,
@@ -347,6 +359,14 @@ func newDefCfg() (*Config, yaml.CommentMap) {
 				" nameRxFilter:",
 				" - '.*keep channels matching name A.*'",
 				" - '.*keep channels matching name B.*'",
+			),
+		},
+		"$.playlists[0].nameRxOrLanguagesFilter": []*yaml.Comment{
+			yaml.HeadComment(
+				"",
+				" If true, combine nameRxFilter and languagesFilter with logical OR instead of",
+				" the default AND: keep a channel if its name matches any nameRxFilter OR its",
+				" language is in languagesFilter. Useful when language metadata is sparse.",
 			),
 		},
 		"$.playlists[0].nameRxBlacklist": []*yaml.Comment{
